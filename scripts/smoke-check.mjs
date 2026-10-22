@@ -1,0 +1,31 @@
+import { readFile, access } from "node:fs/promises";
+import { resolve } from "node:path";
+import assert from "node:assert/strict";
+
+const root = process.cwd();
+const pkg = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));
+assert.equal(pkg.name, "personal-virtual-universe");
+assert.ok(pkg.scripts.dev, "missing dev script");
+assert.ok(pkg.scripts.build, "missing build script");
+assert.ok(pkg.scripts.typecheck, "missing typecheck script");
+for (const file of [
+  "electron/main.ts",
+  "electron/preload.ts",
+  "src/App.tsx",
+  "src/components/CharacterMediaPanel.tsx",
+  "src/services/library.ts",
+  "src/services/media.ts",
+  "src/types/models.ts",
+]) await access(resolve(root, file));
+
+const main = await readFile(resolve(root, "electron/main.ts"), "utf8");
+const preload = await readFile(resolve(root, "electron/preload.ts"), "utf8");
+const app = await readFile(resolve(root, "src/App.tsx"), "utf8");
+assert.match(main, /contextIsolation:\s*true/);
+assert.match(main, /nodeIntegration:\s*false/);
+assert.match(main, /sandbox:\s*true/);
+assert.match(preload, /contextBridge\.exposeInMainWorld\("universe"/);
+assert.match(app, /Delete group/);
+assert.match(app, /Delete character/);
+assert.doesNotMatch(main, /MODEL_EXTENSIONS|3D models/);
+console.log("PVU smoke checks passed. These checks validate project structure and security configuration; they do not replace typecheck, build, or runtime tests.");
