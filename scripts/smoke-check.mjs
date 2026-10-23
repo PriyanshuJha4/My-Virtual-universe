@@ -31,6 +31,8 @@ assert.doesNotMatch(main, /MODEL_EXTENSIONS|3D models/);
 assert.match(main, /media:organize-collection/);
 assert.match(main, /media:move-to-library-root/);
 assert.match(main, /media:rename-collection-folder/);
+assert.match(main, /record\.version === 3 \|\| record\.version === 4/, "library save handler must accept current v4 schema");
+assert.match(main, /validCollections/, "v4 collection schema must be validated");
 assert.match(app, /onCollectionsChange/);
 const mediaPanel = await readFile(resolve(root, "src/components/CharacterMediaPanel.tsx"), "utf8");
 assert.match(mediaPanel, /bulkOrganize\("move"\)/);

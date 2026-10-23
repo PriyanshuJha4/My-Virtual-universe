@@ -226,8 +226,13 @@ async function start() {
       const parsed: unknown = JSON.parse(json);
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Library data must be a JSON object.");
       const record = parsed as Record<string, unknown>;
-      if (record.version !== 3 || !Array.isArray(record.characters) || !Array.isArray(record.groups) || !Array.isArray(record.media)) {
-        throw new Error("Library data does not match the supported schema (version 3). Nothing was saved.");
+      // The renderer's current schema is v4 (adds collections for albums/playlists).
+      // Accept v3 as well so older libraries can still be saved after migration.
+      const supportedVersion = record.version === 3 || record.version === 4;
+      const validBase = Array.isArray(record.characters) && Array.isArray(record.groups) && Array.isArray(record.media);
+      const validCollections = record.version !== 4 || Array.isArray(record.collections);
+      if (!supportedVersion || !validBase || !validCollections) {
+        throw new Error("Library data does not match the supported schema (version 3 or 4). Nothing was saved.");
       }
       const target = libraryFile();
       if (!backedUpThisRun) {
