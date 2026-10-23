@@ -23,6 +23,10 @@ declare global {
       openMedia: (relativePath: string) => Promise<Result>;
       revealMedia: (relativePath: string) => Promise<Result>;
       deleteMediaFile: (relativePath: string) => Promise<Result>;
+      organizeMediaFile: (args: { relativePath: string; characterId: string; characterName: string; kind: "album" | "playlist"; collectionId?: string; collectionName?: string; action: "move" | "copy"; newMediaId?: string }) => Promise<Result<{ relativePath: string; fileSize: number }>>;
+      moveMediaToLibraryRoot: (args: { relativePath: string; characterId: string; characterName: string; kind: "album" | "playlist" }) => Promise<Result<{ relativePath: string; fileSize: number }>>;
+      renameMediaCollectionFolder: (args: { characterId: string; characterName: string; kind: "album" | "playlist"; collectionId: string; oldName: string; newName: string }) => Promise<Result<{ oldPrefix?: string; newPrefix?: string }>>;
+      ensureMediaCollectionFolder: (args: { characterId: string; characterName: string; kind: "album" | "playlist"; collectionId: string; collectionName: string }) => Promise<Result>;
     };
   }
 }

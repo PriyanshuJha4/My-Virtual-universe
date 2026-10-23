@@ -13,3 +13,11 @@
 ## Verification status
 
 `npm run test:smoke` passes. Full `npm run typecheck`, `npm run build`, and Electron runtime tests could not be completed in this environment because the dependency installation did not finish and the local `node_modules` tree is incomplete. Do not treat the application as fully tested until those commands and the manual acceptance checklist pass on a machine with a complete npm installation.
+
+## Bulk delete and viewer controls
+- Added checkboxes for files in every media tab, including All, Documents and Others.
+- Added a confirmation-protected Delete selected action. Each file deletion is handled independently; failed deletions are reported while successful deletions are removed from the library index.
+- Permanently deleted media IDs are removed from album/playlist membership and any matching collection thumbnail reference.
+- Added a delete action directly in the image/video viewer.
+- Added image zoom controls (100%–400%), reset, keyboard shortcuts (+/−/0), and Ctrl/Command + mouse-wheel zoom.
+- Verification: project smoke checks pass. Full TypeScript/build verification could not be run because dependency installation timed out in this environment.

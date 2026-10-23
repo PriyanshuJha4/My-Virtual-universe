@@ -156,7 +156,10 @@ h1, h2, h3, p { margin: 0; }
 .media-search input { background: none; border: 0; outline: 0; width: 160px; color: var(--text); }
 .media-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 44px 16px; border: 1px dashed #343854; border-radius: 14px; color: var(--muted); }
 .media-empty strong { color: var(--text); }
-.media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+.media-grid { position: relative; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; user-select: none; }
+.media-grid.is-marquee-selecting { cursor: crosshair; }
+.media-card.is-selected { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 65%, transparent); }
+.selection-marquee { position: absolute; z-index: 10; pointer-events: none; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); border-radius: 3px; }
 .media-card { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 13px; background: var(--panel); overflow: hidden; min-width: 0; }
 .media-preview { position: relative; display: block; width: 100%; aspect-ratio: 4 / 3; padding: 0; border: 0; background: #0d0f16; overflow: hidden; }
 .media-preview img, .media-preview video { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
@@ -164,6 +167,8 @@ h1, h2, h3, p { margin: 0; }
 .media-placeholder { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 8px; }
 .media-placeholder audio { width: 100%; height: 32px; }
 .media-info { padding: 10px 12px 4px; min-width: 0; }
+.media-select { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; color: var(--muted); font-size: 11px; cursor: pointer; }
+.media-select input { accent-color: var(--accent); width: 14px; height: 14px; }
 .media-info strong { display: block; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .media-info small { color: var(--muted); font-size: 12px; }
 .media-actions { display: flex; gap: 4px; padding: 6px 8px 10px; }
@@ -176,10 +181,18 @@ h1, h2, h3, p { margin: 0; }
 /* ---------- Viewer ---------- */
 .lightbox { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(4, 5, 9, .93); }
 .lightbox-content { max-width: min(92vw, 1400px); max-height: 88vh; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.lightbox-media { max-width: 100%; max-height: calc(88vh - 40px); object-fit: contain; border-radius: 8px; background: #000; }
+.lightbox-media { max-width: 100%; max-height: calc(88vh - 70px); object-fit: contain; border-radius: 8px; background: #000; }
+.lightbox-image-viewport { width: min(90vw, 1400px); height: calc(88vh - 70px); display: flex; align-items: center; justify-content: center; overflow: auto; border-radius: 8px; }
+.lightbox-image { flex: 0 0 auto; transform-origin: center center; transition: transform 120ms ease-out; cursor: zoom-in; user-select: none; }
 .lightbox-caption { display: flex; gap: 16px; font-size: 13px; color: var(--muted); max-width: 100%; }
 .lightbox-caption span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lightbox-close, .lightbox-arrow { position: absolute; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, .1); color: #fff; }
+.lightbox-close, .lightbox-arrow, .lightbox-tools button { position: absolute; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, .1); color: #fff; }
+.lightbox-tools { position: absolute; top: 16px; right: 72px; z-index: 2; display: flex; align-items: center; gap: 6px; }
+.lightbox-tools button { position: static; width: 38px; height: 38px; cursor: pointer; }
+.lightbox-tools button:hover { background: rgba(255, 255, 255, .22); }
+.lightbox-tools button:disabled { opacity: .4; cursor: not-allowed; }
+.lightbox-tools .lightbox-delete { color: #ff858e; }
+.zoom-level { min-width: 46px; text-align: center; color: #fff; font-size: 12px; font-variant-numeric: tabular-nums; }
 .lightbox-close:hover, .lightbox-arrow:hover { background: rgba(255, 255, 255, .2); }
 .lightbox-close { top: 16px; right: 16px; }
 .lightbox-arrow { top: 50%; transform: translateY(-50%); }
@@ -224,3 +237,31 @@ h1, h2, h3, p { margin: 0; }
   .global-search { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation-duration: .01ms !important; } }
+
+/* ---------- Character albums and video playlists ---------- */
+.collections-area { margin: 4px 0 18px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(10, 12, 20, .42); }
+.collections-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.collection-heading-actions, .collection-controls { display: flex; align-items: center; gap: 6px; }
+.compact-button { min-height: 30px; padding: 5px 10px; font-size: 12px; }
+.collection-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.collection-card { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.collection-card.active { border-color: var(--accent2); box-shadow: 0 0 0 1px var(--accent2); }
+.collection-cover { position: relative; width: 100%; aspect-ratio: 16 / 9; padding: 0; border: 0; background: #0d0f16; overflow: hidden; display: block; }
+.collection-cover img, .collection-cover video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.collection-placeholder { height: 100%; display: grid; place-items: center; color: var(--accent); }
+.collection-count { position: absolute; right: 8px; bottom: 8px; padding: 3px 7px; border-radius: 99px; background: rgba(0,0,0,.72); color: #fff; font-size: 11px; }
+.collection-details { padding: 9px; min-width: 0; }
+.collection-details > strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; margin-bottom: 8px; }
+.collection-controls select, .add-collection-select { min-width: 0; max-width: 100%; color: var(--soft); background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 5px 6px; font-size: 11px; }
+.collection-controls select { flex: 1; }
+.collection-controls button { flex: 0 0 27px; width: 27px; height: 27px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 7px; color: var(--soft); background: var(--panel2); }
+.collection-controls button.danger:hover { color: var(--danger); border-color: var(--danger); }
+.collection-active-note { margin: 12px 0 0; color: var(--muted); font-size: 12px; }
+.bulk-media-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.bulk-media-toolbar select { min-width: 160px; max-width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); color: var(--text); font-size: 12px; }
+.bulk-media-toolbar button:disabled { opacity: .45; cursor: not-allowed; }
+.bulk-selected-count { color: var(--muted); font-size: 12px; margin-right: auto; }
+.danger-bulk-button { color: var(--danger) !important; border-color: color-mix(in srgb, var(--danger) 45%, var(--line)) !important; }
+.danger-bulk-button:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 12%, var(--panel2)); }
+.add-collection-select { width: 86px; }
+@media (max-width: 560px) { .collections-area { padding: 10px; } .collection-grid { grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); } .collections-heading { align-items: flex-start; } .lightbox-tools { top: 68px; right: 12px; gap: 4px; } .lightbox-tools button { width: 34px; height: 34px; } .lightbox-arrow.left { left: 6px; } .lightbox-arrow.right { right: 6px; } .lightbox-content { max-width: 96vw; } .lightbox-image-viewport { width: 96vw; } }

@@ -147,6 +147,40 @@ export async function pickAndImportDesktop(characterId: string, characterName: s
   return r.files;
 }
 
+
+export async function organizeMediaFile(file: MediaFile, characterName: string, kind: "album" | "playlist", collection: { id: string; name: string }, action: "move" | "copy", newMediaId?: string): Promise<{ relativePath: string; fileSize: number }> {
+  if (isBrowserFile(file) || !window.universe) {
+    if (action === "move") return { relativePath: file.relativePath, fileSize: file.fileSize };
+    const blob = await getBlob(file.id);
+    if (!blob || !newMediaId) throw new Error("The saved media data is missing.");
+    await putBlob(newMediaId, blob);
+    return { relativePath: `browser:${newMediaId}`, fileSize: blob.size };
+  }
+  const r = await window.universe.organizeMediaFile({ relativePath: file.relativePath, characterId: file.characterId, characterName, kind, collectionId: collection.id, collectionName: collection.name, action, newMediaId });
+  if (!r.ok) throw new Error(r.error);
+  return { relativePath: r.relativePath, fileSize: r.fileSize };
+}
+
+export async function moveMediaToLibraryRoot(file: MediaFile, characterName: string, kind: "album" | "playlist"): Promise<{ relativePath: string; fileSize: number }> {
+  if (isBrowserFile(file) || !window.universe) return { relativePath: file.relativePath, fileSize: file.fileSize };
+  const r = await window.universe.moveMediaToLibraryRoot({ relativePath: file.relativePath, characterId: file.characterId, characterName, kind });
+  if (!r.ok) throw new Error(r.error);
+  return { relativePath: r.relativePath, fileSize: r.fileSize };
+}
+
+export async function ensureMediaCollectionFolder(character: { id: string; name: string }, collection: { id: string; name: string; kind: "album" | "playlist" }): Promise<void> {
+  if (!window.universe) return;
+  const r = await window.universe.ensureMediaCollectionFolder({ characterId: character.id, characterName: character.name, kind: collection.kind, collectionId: collection.id, collectionName: collection.name });
+  if (!r.ok) throw new Error(r.error);
+}
+
+export async function renameMediaCollectionFolder(character: { id: string; name: string }, collection: { id: string; name: string; kind: "album" | "playlist" }, newName: string): Promise<{ oldPrefix?: string; newPrefix?: string }> {
+  if (!window.universe) return {};
+  const r = await window.universe.renameMediaCollectionFolder({ characterId: character.id, characterName: character.name, kind: collection.kind, collectionId: collection.id, oldName: collection.name, newName });
+  if (!r.ok) throw new Error(r.error);
+  return { oldPrefix: r.oldPrefix, newPrefix: r.newPrefix };
+}
+
 /* ---------- Text, open, delete ---------- */
 export async function readText(file: MediaFile): Promise<string> {
   if (isBrowserFile(file)) {

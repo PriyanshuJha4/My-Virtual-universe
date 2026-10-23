@@ -1,4 +1,4 @@
-import type { Character, Library, MediaFile } from "../types/models";
+import type { Character, Library, MediaCollection, MediaFile } from "../types/models";
 import { UNGROUPED } from "../types/models";
 
 const KEY = "pvu.library.v3";
@@ -8,7 +8,7 @@ const LEGACY_GROUPS = "pvu.character-groups.v1";
 const LEGACY_MEDIA = "pvu.character-media.v2";
 const legacyAvatarKey = (id: string) => `pvu.avatar.${id}`;
 
-export const emptyLibrary = (): Library => ({ version: 3, characters: [], groups: [], media: [] });
+export const emptyLibrary = (): Library => ({ version: 4, characters: [], groups: [], media: [], collections: [] });
 
 function readJson(key: string): unknown {
   try {
@@ -58,6 +58,19 @@ export function normalizeLibrary(input: unknown): Library {
       textContent: typeof m.textContent === "string" ? m.textContent : undefined,
     }));
 
+  const collections: MediaCollection[] = (Array.isArray(raw.collections) ? raw.collections : [])
+    .filter((c): c is Obj => isObj(c) && typeof c.id === "string" && typeof c.characterId === "string" && (c.kind === "album" || c.kind === "playlist"))
+    .map(c => ({
+      id: c.id as string,
+      characterId: c.characterId as string,
+      kind: c.kind as MediaCollection["kind"],
+      name: str(c.name, "Untitled collection"),
+      mediaIds: Array.isArray(c.mediaIds) ? c.mediaIds.filter((id): id is string => typeof id === "string") : [],
+      thumbnailMediaId: typeof c.thumbnailMediaId === "string" ? c.thumbnailMediaId : undefined,
+      createdAt: str(c.createdAt, now),
+      updatedAt: str(c.updatedAt, now),
+    }));
+
   // Groups: keep the user's order, drop duplicates, and make sure every group used by a character exists.
   const groups: string[] = [];
   const addGroup = (g: string) => {
@@ -69,7 +82,14 @@ export function normalizeLibrary(input: unknown): Library {
   // Point characters at the canonical spelling of their group ("Ungrouped" becomes empty).
   characters.forEach(c => { c.groupName = groups.find(g => g.toLowerCase() === (c.groupName || "").toLowerCase()) || ""; });
 
-  return { version: 3, characters, groups, media };
+  const mediaIds = new Set(media.map(m => m.id));
+  const validCollections = collections.map(c => ({
+    ...c,
+    mediaIds: [...new Set(c.mediaIds)].filter(id => mediaIds.has(id)),
+    thumbnailMediaId: c.thumbnailMediaId && mediaIds.has(c.thumbnailMediaId) ? c.thumbnailMediaId : undefined,
+  })).filter(c => characters.some(ch => ch.id === c.characterId));
+
+  return { version: 4, characters, groups, media, collections: validCollections };
 }
 
 function readBrowserLibrary(): Library | null {

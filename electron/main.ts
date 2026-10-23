@@ -337,6 +337,112 @@ async function start() {
     return { ok: true, files };
   });
 
+  /* ---------- Physical album / playlist folders ---------- */
+  function safeFolderName(value: unknown, fallback: string) {
+    const cleaned = (typeof value === "string" ? value : fallback).normalize("NFKD").replace(/[^a-zA-Z0-9 _-]/g, "").trim().replace(/\s+/g, "-").slice(0, 70);
+    return cleaned || fallback;
+  }
+  function validateCollectionArgs(args: any) {
+    if (!args || typeof args !== "object") throw new Error("Invalid collection operation.");
+    if (typeof args.characterId !== "string" || !/^[a-zA-Z0-9_-]{1,100}$/.test(args.characterId)) throw new Error("Invalid character.");
+    if (args.kind !== "album" && args.kind !== "playlist") throw new Error("Invalid collection type.");
+    if (typeof args.collectionId !== "string" || !/^[a-zA-Z0-9_-]{1,100}$/.test(args.collectionId)) throw new Error("Invalid collection ID.");
+  }
+  async function findOrCreateCharacterDir(characterId: string, characterName: string) {
+    const charsRoot = path.join(activeMediaRoot, "Characters");
+    await mkdir(charsRoot, { recursive: true });
+    const suffix = `_${characterId.slice(0, 8)}`;
+    try {
+      const entries = await readdir(charsRoot, { withFileTypes: true });
+      const found = entries.find(entry => entry.isDirectory() && entry.name.endsWith(suffix));
+      if (found) return path.join(charsRoot, found.name);
+    } catch { /* create below */ }
+    const folder = `${safeFolderName(characterName, "Character")}${suffix}`;
+    const result = path.join(charsRoot, folder);
+    await mkdir(result, { recursive: true });
+    return result;
+  }
+  function mediaTypeFolder(kind: "album" | "playlist") { return kind === "album" ? "Photos" : "Videos"; }
+  function collectionFolderName(name: string, id: string) { return `${safeFolderName(name, "Collection")}_${id.slice(0, 8)}`; }
+  async function getCollectionFolder(args: any, create = true) {
+    validateCollectionArgs(args);
+    const characterDir = await findOrCreateCharacterDir(args.characterId, String(args.characterName || "Character"));
+    const typeRoot = path.join(characterDir, mediaTypeFolder(args.kind));
+    const subRoot = path.join(typeRoot, args.kind === "album" ? "Albums" : "Playlists");
+    const folderName = collectionFolderName(String(args.collectionName || "Collection"), args.collectionId);
+    const target = path.join(subRoot, folderName);
+    if (create) await mkdir(target, { recursive: true });
+    return { characterDir, typeRoot, subRoot, target, folderName };
+  }
+  async function moveOrCopyMedia(args: any, action: "move" | "copy", toRoot = false) {
+    if (!args || typeof args !== "object") throw new Error("Invalid media operation.");
+    const source = resolveMediaPath(args.relativePath);
+    const sourceStat = await stat(source);
+    if (!sourceStat.isFile()) throw new Error("Only files can be organized.");
+    if (typeof args.characterId !== "string" || !/^[a-zA-Z0-9_-]{1,100}$/.test(args.characterId)) throw new Error("Invalid character.");
+    const ext = path.extname(source).toLowerCase();
+    const actualKind = IMAGE_EXTENSIONS.includes(ext) ? "album" : VIDEO_EXTENSIONS.includes(ext) ? "playlist" : null;
+    if (!actualKind || actualKind !== args.kind) throw new Error("This file type does not match the selected collection.");
+    const parts = path.relative(activeMediaRoot, source).split(path.sep);
+    if (parts[0] !== "Characters" || parts.length < 3 || !parts[1].endsWith(`_${args.characterId.slice(0, 8)}`)) throw new Error("This file does not belong to the selected character.");
+    const characterDir = path.join(activeMediaRoot, "Characters", parts[1]);
+    const typeRoot = path.join(characterDir, mediaTypeFolder(args.kind));
+    let destinationDir = typeRoot;
+    let destinationId = action === "copy" ? args.newMediaId : args.mediaId;
+    if (action === "copy" && (typeof destinationId !== "string" || !/^[a-zA-Z0-9_-]{1,100}$/.test(destinationId))) throw new Error("Invalid new media ID for copy.");
+    if (!toRoot) {
+      const target = await getCollectionFolder(args, true);
+      destinationDir = target.target;
+    } else {
+      await mkdir(destinationDir, { recursive: true });
+    }
+    const baseName = path.basename(source).replace(/^[a-f0-9-]{8,36}-/i, "");
+    const safeName = baseName.replace(/[^a-zA-Z0-9._ -]/g, "_").slice(0, 140) || "media";
+    const prefix = action === "copy" ? String(destinationId).slice(0, 8) : path.basename(source).split("-")[0];
+    const destination = path.join(destinationDir, `${prefix}-${safeName}`);
+    if (path.resolve(source) === path.resolve(destination)) return { relativePath: path.relative(activeMediaRoot, source), fileSize: sourceStat.size };
+    await mkdir(destinationDir, { recursive: true });
+    if (action === "copy") {
+      await copyFile(source, destination);
+    } else {
+      try { await rename(source, destination); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EXDEV") throw error;
+        await copyFile(source, destination);
+        await unlink(source);
+      }
+    }
+    const stored = await stat(destination);
+    return { relativePath: path.relative(activeMediaRoot, destination), fileSize: stored.size };
+  }
+  handle("media:ensure-collection-folder", async (_event, args: any) => {
+    await getCollectionFolder(args, true);
+    return { ok: true };
+  });
+  handle("media:organize-collection", async (_event, args: any) => {
+    if (args?.action !== "move" && args?.action !== "copy") throw new Error("Invalid operation.");
+    return { ok: true, ...await moveOrCopyMedia(args, args.action, false) };
+  });
+  handle("media:move-to-library-root", async (_event, args: any) => ({ ok: true, ...await moveOrCopyMedia({ ...args, mediaId: "root" }, "move", true) }));
+  handle("media:rename-collection-folder", async (_event, args: any) => {
+    validateCollectionArgs({ ...args, collectionName: args?.oldName });
+    const characterDir = await findOrCreateCharacterDir(args.characterId, String(args.characterName || "Character"));
+    const typeRoot = path.join(characterDir, mediaTypeFolder(args.kind));
+    const subRoot = path.join(typeRoot, args.kind === "album" ? "Albums" : "Playlists");
+    const suffix = `_${args.collectionId.slice(0, 8)}`;
+    let oldFolder: string | undefined;
+    try { oldFolder = (await readdir(subRoot, { withFileTypes: true })).find(e => e.isDirectory() && e.name.endsWith(suffix))?.name; } catch { /* no folder yet */ }
+    if (!oldFolder) return { ok: true };
+    const nextFolder = collectionFolderName(String(args.newName || "Collection"), args.collectionId);
+    const oldPath = path.join(subRoot, oldFolder);
+    const newPath = path.join(subRoot, nextFolder);
+    if (oldPath !== newPath) {
+      try { await rename(oldPath, newPath); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    }
+    return { ok: true, oldPrefix: path.relative(activeMediaRoot, oldPath), newPrefix: path.relative(activeMediaRoot, newPath) };
+  });
+
   /* ---------- Reading, editing, opening, deleting ---------- */
   handle("media:read-text", async (_event, relativePath: unknown) => {
     const fullPath = resolveMediaPath(relativePath);

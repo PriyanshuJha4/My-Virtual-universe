@@ -15,4 +15,8 @@ contextBridge.exposeInMainWorld("universe", {
   openMedia: (relativePath: string) => ipcRenderer.invoke("media:open", relativePath),
   revealMedia: (relativePath: string) => ipcRenderer.invoke("media:reveal", relativePath),
   deleteMediaFile: (relativePath: string) => ipcRenderer.invoke("media:delete", relativePath),
+  organizeMediaFile: (args: { relativePath: string; characterId: string; characterName: string; kind: "album" | "playlist"; collectionId?: string; collectionName?: string; action: "move" | "copy"; newMediaId?: string }) => ipcRenderer.invoke("media:organize-collection", args),
+  moveMediaToLibraryRoot: (args: { relativePath: string; characterId: string; characterName: string; kind: "album" | "playlist" }) => ipcRenderer.invoke("media:move-to-library-root", args),
+  renameMediaCollectionFolder: (args: { characterId: string; characterName: string; kind: "album" | "playlist"; collectionId: string; oldName: string; newName: string }) => ipcRenderer.invoke("media:rename-collection-folder", args),
+  ensureMediaCollectionFolder: (args: { characterId: string; characterName: string; kind: "album" | "playlist"; collectionId: string; collectionName: string }) => ipcRenderer.invoke("media:ensure-collection-folder", args),
 });

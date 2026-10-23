@@ -38,11 +38,25 @@ export interface MediaFile {
   textContent?: string;
 }
 
+export interface MediaCollection {
+  id: string;
+  characterId: string;
+  kind: "album" | "playlist";
+  name: string;
+  /** IDs of existing media files; collections never duplicate the original media. */
+  mediaIds: string[];
+  /** Optional cover chosen from existing media. */
+  thumbnailMediaId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Library {
-  version: 3;
+  version: 4;
   characters: Character[];
   groups: string[];
   media: MediaFile[];
+  collections: MediaCollection[];
 }
 
 export const UNGROUPED = "Ungrouped";

@@ -406,6 +406,8 @@ function Universe() {
                 key={selected.id}
                 character={selected}
                 files={selectedFiles}
+                collections={lib.collections.filter(c => c.characterId === selected.id)}
+                onCollectionsChange={collections => edit(l => ({ ...l, collections: [...l.collections.filter(c => c.characterId !== selected.id), ...collections] }))}
                 onAdd={addMedia}
                 onChange={(id, patch) => edit(l => ({ ...l, media: l.media.map(m => (m.id === id ? { ...m, ...patch } : m)) }))}
                 onRemove={id => edit(l => ({ ...l, media: l.media.filter(m => m.id !== id) }))}

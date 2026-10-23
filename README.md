@@ -64,3 +64,12 @@ This source project is an in-progress implementation and does **not** yet satisf
 - Browser-only mode is a convenience preview using browser storage; the complete chosen-folder workflow requires Electron.
 
 Do not treat the known limitations as completed features. Run the checks above on your machine and test important workflows with a copy of your library before relying on the app for irreplaceable data.
+
+### Character albums and playlists
+
+Each character's **Images** tab supports multiple albums and each **Videos** tab supports multiple playlists. Create, rename, or delete collections; add existing files to them; open a collection to view its contents; and change its cover from the character's existing image (album) or image/video (playlist) files. Collections reference existing media IDs and do not duplicate files. Deleting an album or playlist does not delete its media. The library data schema is normalized to version 4; older v3 libraries remain readable.
+
+### Bulk deletion and image viewer
+Select multiple files using the checkboxes on the file cards, then choose **Delete selected**. The app asks for confirmation before permanently deleting files. Files successfully deleted are also removed from album/playlist references; files that fail to delete remain in the library and are reported.
+
+Open an image to use the viewer's **zoom in**, **zoom out**, **reset zoom**, and **delete** controls. Zoom ranges from 100% to 400%; keyboard shortcuts are `+`/`-`/`0`, and Ctrl/Command + mouse wheel also zooms. The viewer's delete button permanently deletes the currently open file after confirmation.
