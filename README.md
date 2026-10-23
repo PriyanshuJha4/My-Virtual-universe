@@ -73,3 +73,8 @@ Each character's **Images** tab supports multiple albums and each **Videos** tab
 Select multiple files using the checkboxes on the file cards, then choose **Delete selected**. The app asks for confirmation before permanently deleting files. Files successfully deleted are also removed from album/playlist references; files that fail to delete remain in the library and are reported.
 
 Open an image to use the viewer's **zoom in**, **zoom out**, **reset zoom**, and **delete** controls. Zoom ranges from 100% to 400%; keyboard shortcuts are `+`/`-`/`0`, and Ctrl/Command + mouse wheel also zooms. The viewer's delete button permanently deletes the currently open file after confirmation.
+
+
+### Recover an existing data folder
+
+In the desktop app choose **Storage → Connect existing data folder**, then select the PVU vault root from the previous laptop (the folder containing `library.json` and/or `Characters/`). The folder is connected in place, not copied or deleted. Make a backup first. PVU periodically scans supported files inside the character folder layout and updates the library when files are added, renamed or deleted in Windows File Explorer. PVU changes are saved to the same folder. This is local-folder reconciliation, not multi-device cloud sync.

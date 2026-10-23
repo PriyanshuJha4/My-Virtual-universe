@@ -21,3 +21,14 @@
 - Added a delete action directly in the image/video viewer.
 - Added image zoom controls (100%–400%), reset, keyboard shortcuts (+/−/0), and Ctrl/Command + mouse-wheel zoom.
 - Verification: project smoke checks pass. Full TypeScript/build verification could not be run because dependency installation timed out in this environment.
+
+## Stable character folders after renaming
+- Fixed media imports to resolve the existing character directory by the stable character ID suffix instead of constructing a new directory from the current display name. Renaming a character should no longer cause later uploads to create a second character folder.
+- Full build/runtime verification still needs to be performed on a machine with complete dependencies. Existing duplicate folders created by earlier versions are not automatically merged by this change.
+
+
+## Explicit delete-from-disk confirmations
+- Single-file and bulk-delete confirmations now explicitly state that the original files are permanently deleted from the computer/File Explorer, not merely removed from the PVU library.
+- The confirmation button says `Delete permanently`.
+- Character deletion warns that every associated media file will be permanently deleted from disk.
+- `Remove from this collection` remains a separate non-delete action that moves the file back to the character's main Photos/Videos folder.

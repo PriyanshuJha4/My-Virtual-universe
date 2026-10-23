@@ -55,6 +55,26 @@ function Universe() {
 
   useEffect(() => { void loadLibrary().then(applyLoaded); }, [applyLoaded]);
 
+  // Periodically reconcile the selected vault with Windows File Explorer. Changes made
+  // inside PVU are saved first; external file additions, renames and deletions then appear here.
+  useEffect(() => {
+    if (!isDesktop() || load.status !== "ready" || !window.universe?.syncStorageFolder) return;
+    let running = false;
+    const sync = async () => {
+      if (running || dirty.current || !canSave.current) return;
+      running = true;
+      try {
+        const result = await window.universe?.syncStorageFolder();
+        if (!result?.ok || !result.data || dirty.current) return;
+        const loaded = await loadLibrary();
+        if (loaded.ok && JSON.stringify(loaded.library) !== JSON.stringify(libRef.current) && !dirty.current) applyLoaded(loaded);
+      } catch { /* Keep the current UI available; the next sync will retry. */ }
+      finally { running = false; }
+    };
+    const timer = window.setInterval(() => void sync(), 4000);
+    return () => window.clearInterval(timer);
+  }, [load.status, applyLoaded]);
+
   const flush = useCallback(async (): Promise<boolean> => {
     if (!canSave.current) return false;
     if (!dirty.current) return true;
@@ -191,8 +211,14 @@ function Universe() {
 
   async function deleteCharacter(c: Character) {
     const files = lib.media.filter(m => m.characterId === c.id);
-    const extra = files.length ? ` Its ${files.length} file${files.length === 1 ? "" : "s"} will also be deleted from this computer.` : "";
-    const ok = await ui.confirm(`Delete “${c.name}”?${extra} This can't be undone.`, { title: "Delete character", confirmLabel: "Delete", danger: true });
+    const extra = files.length
+      ? `
+
+${files.length} associated file${files.length === 1 ? "" : "s"} will be PERMANENTLY deleted from this computer's disk, not just removed from PVU.`
+      : "";
+    const ok = await ui.confirm(`Delete character “${c.name}”?${extra}
+
+This action cannot be undone. If you only want to keep the files, cancel and back them up first.`, { title: "Delete character and its files", confirmLabel: "Delete permanently", danger: true });
     if (!ok) return;
     // Do not remove the character from the index if a stored file could not be deleted.
     // This prevents a failed disk operation from becoming a silent data-loss event.
@@ -482,16 +508,25 @@ function StorageModal({ onClose, flush, reload }: { onClose: () => void; flush: 
     else if (r.error) ui.toast(r.error);
   }
 
+  async function useExisting() {
+    if (!(await flush())) { ui.toast("Your latest changes could not be saved. Storage was not changed."); return; }
+    const r = await window.universe?.adoptExistingStorageFolder();
+    if (!r) return;
+    if (r.ok && r.mediaRoot) { setRoot(r.mediaRoot); await reload(); ui.toast("Existing data folder connected. PVU will sync file changes automatically."); onClose(); }
+    else if (r.error) ui.toast(r.error);
+  }
+
   return (
     <Modal title="Where your data is stored" onClose={onClose}>
       {desktop ? (
         <>
-          <p className="modal-text">Your characters, notes and files live together in this folder on your computer. To back everything up, copy the whole folder.</p>
+          <p className="modal-text">This is your PVU vault: characters, notes and media live together in one normal Windows folder. Back it up by copying the whole folder.</p>
           <div className="path-box" title={root ?? ""}>{root ?? "…"}</div>
-          <p className="muted small">Changing the folder copies your data to the new location. The old folder is left untouched.</p>
+          <p className="muted small">Use “Connect existing data folder” to recover a PVU folder from an old laptop without copying or moving the source. PVU checks the folder periodically for file additions, renames and deletions; changes made in PVU are saved to this same folder.</p>
           <div className="modal-actions">
             <button className="secondary-button" onClick={() => void window.universe?.openStorageFolder()}><FolderOpen size={15} /> Open folder</button>
-            <button className="primary-button" onClick={() => void change()}><FolderCog size={15} /> Change folder</button>
+            <button className="secondary-button" onClick={() => void useExisting()}><FolderOpen size={15} /> Connect existing data folder</button>
+            <button className="primary-button" onClick={() => void change()}><FolderCog size={15} /> Copy to another folder</button>
           </div>
         </>
       ) : (

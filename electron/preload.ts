@@ -3,6 +3,8 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 contextBridge.exposeInMainWorld("universe", {
   getInfo: () => ipcRenderer.invoke("app:get-info"),
   chooseStorageFolder: () => ipcRenderer.invoke("storage:choose-folder"),
+  adoptExistingStorageFolder: () => ipcRenderer.invoke("storage:adopt-existing-folder"),
+  syncStorageFolder: () => ipcRenderer.invoke("storage:sync-folder"),
   openStorageFolder: () => ipcRenderer.invoke("storage:open-folder"),
   loadLibrary: () => ipcRenderer.invoke("library:load"),
   saveLibrary: (json: string) => ipcRenderer.invoke("library:save", json),

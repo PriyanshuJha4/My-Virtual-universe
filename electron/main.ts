@@ -196,6 +196,36 @@ async function start() {
     return { ok: true, mediaRoot: activeMediaRoot };
   });
 
+  /* ---------- Existing vault adoption (Obsidian-style parent folder) ---------- */
+  handle("storage:adopt-existing-folder", async event => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const options = { title: "Select an existing PVU data folder from your old computer", defaultPath: activeMediaRoot, properties: ["openDirectory"] as ("openDirectory")[] };
+    const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+    if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true, mediaRoot: activeMediaRoot };
+    const chosen = path.resolve(result.filePaths[0]);
+    if (chosen.toLowerCase() === path.resolve(activeMediaRoot).toLowerCase()) return { ok: true, mediaRoot: activeMediaRoot };
+    const oldRoot = activeMediaRoot;
+    activeMediaRoot = chosen;
+    try {
+      const entries = await readdir(chosen, { withFileTypes: true });
+      const hasLibrary = entries.some(e => e.isFile() && e.name.toLowerCase() === "library.json");
+      const hasCharacters = entries.some(e => e.isDirectory() && e.name.toLowerCase() === "characters");
+      if (!hasLibrary && !hasCharacters) throw new Error("This folder does not look like a PVU data folder. Select the folder containing library.json or a Characters folder.");
+      // Validate the existing index before adopting it; never overwrite or move the source folder.
+      if (hasLibrary) {
+        const parsed = JSON.parse(await readFile(path.join(chosen, "library.json"), "utf8")) as Record<string, unknown>;
+        if (!Array.isArray(parsed.characters) || !Array.isArray(parsed.media)) throw new Error("The selected library.json is not a valid PVU library. The current storage folder was kept.");
+      }
+      await mkdir(chosen, { recursive: true });
+      await writeFile(storageSettingsPath, JSON.stringify({ mediaRoot: chosen }, null, 2), "utf8");
+      backedUpThisRun = false;
+      return { ok: true, mediaRoot: chosen };
+    } catch (error) {
+      activeMediaRoot = oldRoot;
+      throw error;
+    }
+  });
+
   /* ---------- Library (characters, groups, file list) ---------- */
   const libraryFile = () => path.join(activeMediaRoot, "library.json");
   const backupFile = () => path.join(activeMediaRoot, "library.backup.json");
@@ -255,11 +285,137 @@ async function start() {
     return next;
   });
 
+  /* ---------- Reconcile the library with the real filesystem ---------- */
+  const SYNC_EXTENSIONS = new Set([...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS, ...DOCUMENT_EXTENSIONS, ".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".glb", ".gltf"]);
+  async function walkFiles(folder: string): Promise<string[]> {
+    let entries;
+    try { entries = await readdir(folder, { withFileTypes: true }); } catch { return []; }
+    const found: string[] = [];
+    for (const entry of entries) {
+      if (entry.name.startsWith(".") || entry.name.toLowerCase() === "thumbs.db") continue;
+      const full = path.join(folder, entry.name);
+      if (entry.isDirectory()) found.push(...await walkFiles(full));
+      else if (entry.isFile() && SYNC_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) found.push(full);
+    }
+    return found;
+  }
+  function safeDisplayName(folderName: string, suffix: string) {
+    const raw = folderName.endsWith(suffix) ? folderName.slice(0, -suffix.length) : folderName;
+    return raw.replace(/[-_]+/g, " ").trim() || "Recovered character";
+  }
+  async function reconcileFilesystem(): Promise<string> {
+    const libraryPath = path.join(activeMediaRoot, "library.json");
+    let raw: any = {};
+    let libraryExists = false;
+    try { raw = JSON.parse(await readFile(libraryPath, "utf8")); libraryExists = true; }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("PVU could not sync because library.json is unreadable or damaged. No changes were written.");
+    }
+    const characters: any[] = Array.isArray(raw.characters) ? raw.characters : [];
+    const groups: string[] = Array.isArray(raw.groups) ? raw.groups : [];
+    const oldMedia: any[] = Array.isArray(raw.media) ? raw.media : [];
+    const collections: any[] = Array.isArray(raw.collections) ? raw.collections : [];
+    const now = new Date().toISOString();
+    const charsRoot = path.join(activeMediaRoot, "Characters");
+    let charDirs: any[] = [];
+    try { charDirs = (await readdir(charsRoot, { withFileTypes: true })).filter(e => e.isDirectory()); } catch { /* empty vault */ }
+    const knownCharacterIds = new Set(characters.map(c => c.id));
+    const discovered: { character: any; folder: string }[] = [];
+    for (const dir of charDirs) {
+      const match = /_([a-zA-Z0-9-]{8})$/.exec(dir.name);
+      let character = match ? characters.find(c => typeof c.id === "string" && c.id.startsWith(match[1])) : undefined;
+      if (!character) {
+        const folderPrefix = match ? dir.name.slice(0, -9) : dir.name;
+        const normalizedPrefix = folderPrefix.toLowerCase().replace(/[^a-z0-9]/g, "");
+        character = characters.find(c => String(c.name || "").toLowerCase().replace(/[^a-z0-9]/g, "") === normalizedPrefix);
+      }
+      if (!character) {
+        const suffix = match?.[1];
+        const id = suffix && !knownCharacterIds.has(suffix) ? suffix : randomUUID();
+        character = { id, kind: "fictional", name: safeDisplayName(dir.name, match ? `_${match[1]}` : ""), aliases: [], description: "", biography: "", groupName: "", createdAt: now, updatedAt: now };
+        characters.push(character); knownCharacterIds.add(id);
+      }
+      discovered.push({ character, folder: path.join(charsRoot, dir.name) });
+    }
+    const existingByPath = new Map(oldMedia.filter(m => typeof m.relativePath === "string").map(m => [path.normalize(m.relativePath).toLowerCase(), m]));
+    const nextMedia: any[] = [];
+    for (const item of discovered) {
+      const roots = ["Photos", "Videos", "Documents", "Other"];
+      for (const rootName of roots) {
+        const root = path.join(item.folder, rootName);
+        const files = await walkFiles(root);
+        for (const full of files) {
+          const relativePath = path.relative(activeMediaRoot, full);
+          const key = path.normalize(relativePath).toLowerCase();
+          let info;
+          try { info = await stat(full); } catch { continue; }
+          const ext = path.extname(full).toLowerCase();
+          const prior = existingByPath.get(key);
+          let textContent = prior?.textContent;
+          if (TEXT_EXTENSIONS.includes(ext) && info.size <= 2 * 1024 * 1024) {
+            try { textContent = (await readFile(full, "utf8")).slice(0, 30_000); } catch { /* unreadable text file */ }
+          }
+          const media = prior ? { ...prior, characterId: item.character.id, relativePath, originalName: path.basename(full), title: path.basename(full, ext), fileSize: info.size, mimeType: mimeForExtension(ext), textContent } : {
+            id: randomUUID(), characterId: item.character.id, title: path.basename(full, ext), originalName: path.basename(full), relativePath,
+            mimeType: mimeForExtension(ext), fileSize: info.size, addedAt: now, textContent,
+          };
+          nextMedia.push(media);
+        }
+      }
+    }
+    // Discover physical album/playlist folders and rebuild membership from their actual location.
+    for (const item of discovered) {
+      for (const spec of [{ kind: "album" as const, root: path.join(item.folder, "Photos", "Albums") }, { kind: "playlist" as const, root: path.join(item.folder, "Videos", "Playlists") }]) {
+        let dirs: any[] = [];
+        try { dirs = (await readdir(spec.root, { withFileTypes: true })).filter(e => e.isDirectory()); } catch { /* no collections */ }
+        for (const dir of dirs) {
+          const suffixMatch = /_([a-zA-Z0-9-]{8})$/.exec(dir.name);
+          let collection = suffixMatch ? collections.find(c => c.characterId === item.character.id && c.kind === spec.kind && String(c.id).startsWith(suffixMatch[1])) : undefined;
+          if (!collection) {
+            const name = safeDisplayName(dir.name, suffixMatch ? `_${suffixMatch[1]}` : "");
+            collection = { id: suffixMatch ? suffixMatch[1] : randomUUID(), characterId: item.character.id, kind: spec.kind, name, mediaIds: [], createdAt: now, updatedAt: now };
+            collections.push(collection);
+          }
+        }
+      }
+    }
+    for (const collection of collections) {
+      const prefix = collection.kind === "album" ? path.join("Photos", "Albums") : path.join("Videos", "Playlists");
+      const item = discovered.find(x => x.character.id === collection.characterId);
+      if (!item) { collection.mediaIds = []; continue; }
+      const collectionDirSuffix = `_${String(collection.id).slice(0, 8)}`;
+      let folderName = "";
+      try {
+        const dirs = await readdir(path.join(item.folder, prefix), { withFileTypes: true });
+        folderName = dirs.find(d => d.isDirectory() && d.name.endsWith(collectionDirSuffix))?.name || "";
+      } catch { /* folder may have been removed in Explorer */ }
+      collection.mediaIds = folderName ? nextMedia.filter(m => m.characterId === collection.characterId && path.normalize(m.relativePath).split(path.sep).includes(folderName)).map(m => m.id) : [];
+      if (collection.thumbnailMediaId && !nextMedia.some(m => m.id === collection.thumbnailMediaId)) collection.thumbnailMediaId = undefined;
+    }
+    const output = { version: 4, characters, groups, media: nextMedia, collections: collections.filter(c => characters.some(ch => ch.id === c.characterId)) };
+    const json = JSON.stringify(output, null, 2);
+    let oldText = "";
+    try { oldText = await readFile(libraryPath, "utf8"); } catch { /* first scan */ }
+    let changed = !libraryExists;
+    if (libraryExists) {
+      try { changed = JSON.stringify(JSON.parse(oldText)) !== JSON.stringify(JSON.parse(json)); }
+      catch { throw new Error("PVU could not compare the library safely. No changes were written."); }
+    }
+    if (changed) {
+      try { await copyFile(libraryPath, path.join(activeMediaRoot, "library.backup.json")); } catch { /* first scan */ }
+      await writeFile(`${libraryPath}.sync.tmp`, json, "utf8");
+      await rename(`${libraryPath}.sync.tmp`, libraryPath);
+    }
+    return json;
+  }
+  handle("storage:sync-folder", async () => ({ ok: true, data: await reconcileFilesystem() }));
+
   /* ---------- Importing files ---------- */
   async function importSources(characterId: unknown, characterName: unknown, sources: string[]) {
     if (typeof characterId !== "string" || !/^[a-zA-Z0-9_-]{1,100}$/.test(characterId)) throw new Error("Invalid character.");
-    const safeName = (typeof characterName === "string" ? characterName : "Character").normalize("NFKD").replace(/[^a-zA-Z0-9 _-]/g, "").trim().replace(/\s+/g, "-").slice(0, 70) || "Character";
-    const characterDir = path.join(activeMediaRoot, "Characters", `${safeName}_${characterId.slice(0, 8)}`);
+    // Resolve the folder by the stable character ID, not the current display name.
+    // A rename must not create a second directory for the same character.
+    const characterDir = await findOrCreateCharacterDir(String(characterId), typeof characterName === "string" ? characterName : "Character");
     // Keep the documented per-character layout consistent, even before the user imports every type.
     await Promise.all(["Profile", "Photos", "Videos", "Documents", "Other"].map(folder => mkdir(path.join(characterDir, folder), { recursive: true })));
     const imported = [];

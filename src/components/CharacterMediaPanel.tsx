@@ -232,7 +232,7 @@ export default function CharacterMediaPanel({ character, files, collections, onC
   }
 
   async function remove(file: MediaFile) {
-    const ok = await ui.confirm(`Permanently delete “${file.originalName}” from this computer? This cannot be undone.`, { title: "Delete file", confirmLabel: "Delete permanently", danger: true });
+    const ok = await ui.confirm(`PERMANENTLY delete “${file.originalName}” from this computer’s disk? The original file will be deleted from File Explorer too; this is not just removing it from PVU. This cannot be undone.`, { title: "Permanently delete file from disk?", confirmLabel: "Delete permanently", danger: true });
     if (!ok) return;
     await run("Could not delete the file.", async () => {
       await deleteFile(file);
@@ -246,7 +246,7 @@ export default function CharacterMediaPanel({ character, files, collections, onC
   async function bulkDeleteSelected() {
     if (!selectedFiles.length) return;
     const count = selectedFiles.length;
-    const ok = await ui.confirm(`Permanently delete ${count} selected file${count === 1 ? "" : "s"} from this computer? This cannot be undone.`, { title: `Delete ${count} files`, confirmLabel: `Delete ${count} files`, danger: true });
+    const ok = await ui.confirm(`PERMANENTLY delete ${count} selected file${count === 1 ? "" : "s"} from this computer’s disk? The original files will be deleted from File Explorer too; this is not just removing them from PVU. This cannot be undone.`, { title: `Permanently delete ${count} file${count === 1 ? "" : "s"} from disk?`, confirmLabel: "Delete permanently", danger: true });
     if (!ok) return;
     setBusy(true);
     const deleted = new Set<string>();
@@ -548,7 +548,7 @@ export default function CharacterMediaPanel({ character, files, collections, onC
                     ? <button title="Remove from this collection" onClick={() => removeFromCollection(file.id)}><X size={14} /></button>
                     : <select className="add-collection-select" title={`Add to ${collectionKind}`} aria-label={`Add ${file.originalName} to ${collectionKind}`} defaultValue="" onChange={e => { addToCollection(file.id, e.target.value); e.currentTarget.value = ""; }}><option value="">+ {collectionKind === "album" ? "Album" : "Playlist"}</option>{visibleCollections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>)}
                   {isDesktop() && !file.relativePath.startsWith("browser:") && <button title="Show in folder" onClick={() => void run("Could not show the file.", () => revealInFolder(file))}><FolderOpen size={14} /></button>}
-                  <button title="Delete file" className="danger" onClick={() => void remove(file)}><Trash2 size={14} /></button>
+                  <button title="Permanently delete this file from disk" className="danger" onClick={() => void remove(file)}><Trash2 size={14} /></button>
                 </div>
               </article>
             );

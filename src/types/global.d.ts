@@ -12,6 +12,8 @@ declare global {
     universe?: {
       getInfo: () => Promise<{ appName: string; version: string; dataRoot: string; mediaRoot: string }>;
       chooseStorageFolder: () => Promise<{ ok: boolean; canceled?: boolean; mediaRoot?: string; error?: string }>;
+      adoptExistingStorageFolder: () => Promise<{ ok: boolean; canceled?: boolean; mediaRoot?: string; error?: string }>;
+      syncStorageFolder: () => Promise<Result<{ data: string }>>;
       openStorageFolder: () => Promise<Result>;
       loadLibrary: () => Promise<Result<{ data: string | null }>>;
       saveLibrary: (json: string) => Promise<Result>;
